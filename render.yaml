@@ -1,0 +1,31 @@
+databases:
+  - name: webchat-ai-db
+    databaseName: webchat_ai
+    user: webchat_ai
+    plan: free
+
+services:
+  - type: web
+    name: webchat-ai-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx playwright install chromium
+    startCommand: node server.js
+    envVars:
+      # Render wires this automatically from the database above — no need to
+      # copy/paste a connection string anywhere.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: webchat-ai-db
+          property: connectionString
+      # sync:false means Render will prompt you to type these in during the
+      # first deploy, rather than storing the real values in this file (so
+      # you can safely commit render.yaml to a public repo).
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "20"
