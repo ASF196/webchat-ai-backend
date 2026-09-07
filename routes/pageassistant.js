@@ -29,9 +29,23 @@ function safeParseJson(raw) {
   if (!raw) return null;
   let text = String(raw).trim().replace(/```(json)?/gi, '').trim();
   const start = text.indexOf('[');
+  if (start === -1) return null;
   const end = text.lastIndexOf(']');
-  if (start === -1 || end === -1 || end < start) return null;
-  try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+  if (end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch { /* fall through to salvage below */ }
+  }
+  // The model's response got cut off before a closing ']' (large batches of
+  // sections can run past the token budget) — rather than throwing away
+  // every question in the batch because the LAST one didn't finish, pull
+  // out whichever {"section":...,"question":...} objects DID complete and
+  // use those. A partial batch of real questions beats an empty one.
+  const objMatches = text.slice(start).match(/\{[^{}]*\}/g);
+  if (!objMatches) return null;
+  const salvaged = [];
+  for (const m of objMatches) {
+    try { salvaged.push(JSON.parse(m)); } catch { /* skip the one broken object, keep the rest */ }
+  }
+  return salvaged.length ? salvaged : null;
 }
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — same page content, reuse the same questions
@@ -119,7 +133,10 @@ Rules:
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
-      body: JSON.stringify({ model: MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: 700, temperature: 0.4 }),
+      // 2000 (up from 700) — with up to 15 sections in one batch, 700 tokens
+      // wasn't enough room to finish the JSON array, so the response got cut
+      // off mid-object and the strict parser threw away the whole batch.
+      body: JSON.stringify({ model: MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: 2000, temperature: 0.4 }),
     });
     if (!groqRes.ok) {
       const errBody = await groqRes.text();

@@ -331,6 +331,12 @@ function findPilotSections(){
     var head=heads[i];
     var container=head.closest('section,article,[id]')||head.parentElement;
     if(!container||seen.indexOf(container)!==-1)continue;
+    // Skip anything not actually rendered — sliders/carousels commonly keep
+    // every slide's markup in the DOM (including its own <h1>) and just
+    // display:none the inactive ones. Those would never be scrolled into
+    // view anyway, so including them only crowds out real sections from the
+    // one AI Pilot question-writing call's limited response budget.
+    if(container.getClientRects().length===0)continue;
     var name=(head.tagName&&head.tagName.charAt(0)==='H'?head.textContent:container.getAttribute('id'))||'';
     name=name.trim().replace(/\\s+/g,' ').slice(0,60);
     if(!name)continue;
