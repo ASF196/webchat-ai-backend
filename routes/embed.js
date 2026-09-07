@@ -302,7 +302,17 @@ var visitorId=(function(){
 // Clicking it asks that question in chat, grounded in that section's own
 // text so the answer is actually specific, not generic.
 var pilotCfg=null;
-var pilotCfgPromise=fetch(c.apiBase+'/api/page-assistant/config/'+c.token).then(function(r){return r.json();}).then(function(d){pilotCfg=d;return d;}).catch(function(){pilotCfg={enabled:false};return pilotCfg;});
+// Opt-in diagnostics: add ?wcai_debug=1 to any page URL while testing to
+// see exactly what AI Pilot is doing (or why it's staying quiet) in the
+// browser console — nothing is logged unless this is present.
+var PILOT_DEBUG=/[?&]wcai_debug=1\\b/.test(location.search);
+function pilotLog(){if(PILOT_DEBUG)console.log.apply(console,['[WebChat AI Pilot]'].concat(Array.prototype.slice.call(arguments)));}
+var pilotCfgPromise=fetch(c.apiBase+'/api/page-assistant/config/'+c.token).then(function(r){return r.json();}).then(function(d){
+  pilotCfg=d;
+  if(!d||!d.enabled)pilotLog('disabled for this bot — turn it on in the dashboard\\'s AI Pilot tab and click Save Settings.');
+  else pilotLog('enabled — cooldown '+(d.cooldownSeconds||4)+'s, max '+(d.maxSuggestions||0)+' popups/session.');
+  return d;
+}).catch(function(){pilotCfg={enabled:false};pilotLog('could not load config (network/CORS issue?) — treating as disabled.');return pilotCfg;});
 
 function logPilotEvent(eventType,label){
   fetch(c.apiBase+'/api/page-assistant/event',{
@@ -336,11 +346,15 @@ var pilot={sections:[],current:null,questionsBySection:{},lastShownAt:0,shownCou
 var pilotObserver=null;
 var pilotRatios={};
 function startPilotObserving(){
-  if(!('IntersectionObserver' in window))return;
+  if(!('IntersectionObserver' in window)){pilotLog('this browser lacks IntersectionObserver — AI Pilot needs it and will stay off here.');return;}
   if(pilotObserver)pilotObserver.disconnect();
   pilot.sections=findPilotSections();
   pilotRatios={};
-  if(!pilot.sections.length)return;
+  if(!pilot.sections.length){
+    pilotLog('no sections detected on this page — add at least one <h1>/<h2>/<h3>, or a <section id="…">, with ~20+ characters of nearby text, and AI Pilot will pick it up.');
+    return;
+  }
+  pilotLog('found '+pilot.sections.length+' section(s): '+pilot.sections.map(function(s){return '"'+s.name+'"';}).join(', '));
   pilotObserver=new IntersectionObserver(function(entries){
     entries.forEach(function(entry){
       var match=pilot.sections.find(function(s){return s.el===entry.target;});
@@ -365,7 +379,15 @@ function updateCurrentPilotSection(){
   var leaving=pilot.current;
   pilot.current=best;
   if(leaving&&pilotPopupSection===leaving)hidePilotPopup(leaving);
-  if(best)maybeShowPilotPopup();
+  if(best){
+    if(PILOT_DEBUG){
+      if(!pilotCfg||!pilotCfg.enabled)pilotLog('scrolled into "'+best+'" but AI Pilot is disabled — nothing will show.');
+      else if(pilot.shownCount>=(pilotCfg.maxSuggestions||0))pilotLog('scrolled into "'+best+'" but hit the max-popups-per-session cap ('+(pilotCfg.maxSuggestions||0)+') — raise it in settings to see more.');
+      else if(!pilot.questionsBySection[best])pilotLog('scrolled into "'+best+'" — question still generating, will pop up once ready.');
+      else pilotLog('scrolled into "'+best+'" — showing: "'+pilot.questionsBySection[best]+'"');
+    }
+    maybeShowPilotPopup();
+  }
 }
 
 function maybeShowPilotPopup(){
@@ -442,8 +464,9 @@ function fetchPilotQuestions(sections){
     body:JSON.stringify({token:c.token,pageUrl:location.href,sections:sections.map(function(s){return {name:s.name,text:s.text};}),visitorId:visitorId})
   }).then(function(r){return r.json();}).then(function(data){
     (data.questions||[]).forEach(function(q){pilot.questionsBySection[q.section]=q.question;});
+    pilotLog('got '+(data.questions||[]).length+'/'+sections.length+' question(s) back from the server.');
     if(pilot.current)maybeShowPilotPopup();
-  }).catch(function(){});
+  }).catch(function(){pilotLog('failed to fetch section questions — check that your server URL/token are correct.');});
 }
 
 // Some sites reveal real content only after an interaction (an accordion,
