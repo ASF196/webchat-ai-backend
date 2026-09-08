@@ -78,7 +78,7 @@ router.get('/api/page-assistant/config/:token', async (req, res) => {
     if (!settings || !settings.enabled) return res.json({ enabled: false });
     res.json({
       enabled: true,
-      cooldownSeconds: settings.cooldown_seconds ?? 4,
+      cooldownSeconds: settings.cooldown_seconds ?? 0,
       maxSuggestions: settings.max_suggestions ?? 6,
     });
   } catch (err) {
@@ -197,7 +197,7 @@ router.get('/api/admin/page-assistant/:token', requireAdmin, async (req, res) =>
     if (!bot) return res.status(404).json({ error: 'Bot not found' });
     const settings = await db.prepare('SELECT * FROM page_assistant_settings WHERE bot_token = ?').get(token);
     res.json({
-      settings: settings || { bot_token: token, enabled: false, cooldown_seconds: 4, max_suggestions: 6 },
+      settings: settings || { bot_token: token, enabled: false, cooldown_seconds: 0, max_suggestions: 6 },
     });
   } catch (err) {
     console.error('Get page-assistant settings error:', err);
@@ -213,7 +213,7 @@ router.patch('/api/admin/page-assistant/:token', requireAdmin, async (req, res) 
 
     const b = req.body || {};
     const enabled = !!b.enabled;
-    const cooldownSeconds = Number.isFinite(b.cooldownSeconds) ? Math.max(0, Math.min(60, Math.round(b.cooldownSeconds))) : 4;
+    const cooldownSeconds = Number.isFinite(b.cooldownSeconds) ? Math.max(0, Math.min(60, Math.round(b.cooldownSeconds))) : 0;
     const maxSuggestions = Number.isFinite(b.maxSuggestions) ? Math.max(0, Math.min(20, Math.round(b.maxSuggestions))) : 6;
 
     await db.prepare(`

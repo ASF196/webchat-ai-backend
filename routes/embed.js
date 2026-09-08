@@ -241,14 +241,31 @@ var sugsEl=win.querySelector('#sp-sugs');
 
 // ── MARKDOWN / HIGHLIGHT RENDERING (same rules as the dashboard, plus link support) ──
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function renderMd(t){
+function renderMd(raw){
+  // Models commonly put a blank line between each "- " bullet for
+  // readability in raw markdown. Left alone, that blank line survives as a
+  // literal double newline sitting between list items — the last step below
+  // turns every remaining newline into a <br>, so each bullet ended up
+  // wrapped in its own separate <ul> with a <br><br> gap between them
+  // (compounding with the <ul> block's own CSS margin). Collapsing those
+  // in-list blank lines up front, before any HTML is generated, means
+  // consecutive bullets end up as one tight <ul>, the way a normal list
+  // should read — while blank lines that aren't between two bullets (e.g.
+  // a real paragraph break after the list) are left untouched.
+  var t=String(raw).replace(/^([-•][^\\n]*)\\n\\s*\\n(?=[-•]\\s)/gm,'$1\\n');
   return esc(t)
     .replace(/\`\`\`([\\s\\S]*?)\`\`\`/g,function(m,code){return '<code>'+code.trim()+'</code>';})
     .replace(/\`([^\`]+)\`/g,function(_,cd){return '<code>'+cd+'</code>';})
     .replace(/\\*\\*(.+?)\\*\\*/g,'<strong>$1</strong>')
     .replace(/\\*(.+?)\\*/g,'<em>$1</em>')
     .replace(/^[-•]\\s+(.+)/gm,'<li>$1</li>')
-    .replace(/(<li>[\\s\\S]+?<\\/li>)/g,'<ul>$1</ul>')
+    // Group ALL consecutive <li> lines into ONE shared <ul> (the old regex
+    // matched non-greedily and wrapped each single <li> in its own <ul>,
+    // which is what caused the multiple-margins-stacking half of the gap
+    // bug). \\n? (at most one newline) between items, not \\s*, so this
+    // can't also swallow a genuine blank-line paragraph break that happens
+    // to follow the list.
+    .replace(/(?:<li>[\\s\\S]*?<\\/li>\\n?)+/g,function(m){return '<ul>'+m.replace(/\\n/g,'')+'</ul>';})
     .replace(/(https?:\\/\\/[^\\s<]+[^\\s<.,;:!?)\\]'"])/g,function(url){
       return '<a href="'+url+'" target="_blank" rel="noopener noreferrer">'+url+'</a>';
     })
@@ -314,7 +331,7 @@ function pilotLog(){if(PILOT_DEBUG)console.log.apply(console,['[WebChat AI Pilot
 var pilotCfgPromise=fetch(c.apiBase+'/api/page-assistant/config/'+c.token).then(function(r){return r.json();}).then(function(d){
   pilotCfg=d;
   if(!d||!d.enabled)pilotLog('disabled for this bot — turn it on in the dashboard\\'s AI Pilot tab and click Save Settings.');
-  else pilotLog('enabled — cooldown '+(typeof d.cooldownSeconds==='number'?d.cooldownSeconds:4)+'s, max '+(typeof d.maxSuggestions==='number'?d.maxSuggestions:0)+' popups/session.');
+  else pilotLog('enabled — cooldown '+(typeof d.cooldownSeconds==='number'?d.cooldownSeconds:0)+'s, max '+(typeof d.maxSuggestions==='number'?d.maxSuggestions:0)+' popups/session.');
   return d;
 }).catch(function(){pilotCfg={enabled:false};pilotLog('could not load config (network/CORS issue?) — treating as disabled.');return pilotCfg;});
 
@@ -399,13 +416,13 @@ function playPilotChime(){
     var osc=pilotAudioCtx.createOscillator();
     var gain=pilotAudioCtx.createGain();
     osc.type='sine';
-    osc.frequency.setValueAtTime(720,t);      // friendly two-note "ding-ding", not a harsh alert beep
-    osc.frequency.setValueAtTime(980,t+0.09);
+    osc.frequency.setValueAtTime(760,t);      // friendly two-note "ding-ding", not a harsh alert beep
+    osc.frequency.setValueAtTime(1040,t+0.1);
     gain.gain.setValueAtTime(0,t);
-    gain.gain.linearRampToValueAtTime(0.15,t+0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001,t+0.32);
+    gain.gain.linearRampToValueAtTime(0.28,t+0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001,t+0.38);
     osc.connect(gain);gain.connect(pilotAudioCtx.destination);
-    osc.start(t);osc.stop(t+0.34);
+    osc.start(t);osc.stop(t+0.4);
   }catch(e){/* autoplay blocked or unsupported — fine, popup still shows */}
 }
 
@@ -496,7 +513,7 @@ function maybeShowPilotPopup(){
   // cooldownSeconds can legitimately be 0 ("no cooldown"), and 0||4 would
   // silently turn that back into 4 — only fall back when it's genuinely
   // missing (undefined/null), not just falsy.
-  var cooldownMs=(typeof pilotCfg.cooldownSeconds==='number'?pilotCfg.cooldownSeconds:4)*1000;
+  var cooldownMs=(typeof pilotCfg.cooldownSeconds==='number'?pilotCfg.cooldownSeconds:0)*1000;
   if(now-pilot.lastShownAt<cooldownMs)return;
   var question=pilot.questionsBySection[name];
   if(!question)return; // not loaded yet — the periodic retry below or the fetch callback will catch it
