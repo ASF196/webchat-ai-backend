@@ -58,8 +58,7 @@ var lastQuestion='';
 // ── STYLES (scoped under #sp-widget-root) ──
 var style=document.createElement('style');
 style.textContent=\`
-#sp-widget-root{position:fixed;bottom:18px;right:20px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-end;gap:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
-#sp-widget-root *{box-sizing:border-box}
+#sp-widget-root{position:fixed;bottom:18px;right:20px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-end;gap:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}#sp-widget-root *{box-sizing:border-box}
 #sp-window{width:390px;height:600px;max-height:calc(100vh - 100px);background:#0c0d18;border:1px solid rgba(255,255,255,.09);border-radius:20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 90px rgba(0,0,0,.8),0 0 0 1px rgba(91,99,245,.07);transform-origin:bottom right;transition:transform .22s cubic-bezier(0.34,1.4,0.64,1),opacity .18s ease,width .28s,height .28s;position:relative}
 #sp-window.expanded{width:500px;height:min(760px,calc(100vh - 100px))}
 #sp-window.hidden{transform:scale(0.88) translateY(14px);opacity:0;pointer-events:none}
@@ -67,6 +66,11 @@ style.textContent=\`
 .sp-fav{width:30px;height:30px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .sp-fav img{width:100%;height:100%;object-fit:cover;display:block}
 .sp-fav svg{width:14px;height:14px;fill:#fff}
+.sp-pilot-avatar{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;margin-top:1px}
+.sp-pilot-avatar svg{width:15px;height:15px;fill:#fff;flex-shrink:0}
+.sp-pilot-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+@keyframes sp-pilot-ring{0%{box-shadow:0 0 0 0 rgba(91,99,245,.55)}100%{box-shadow:0 0 0 14px rgba(91,99,245,0)}}
+#sp-orb-btn.sp-pilot-alert .sp-orb-core{animation:sp-orb-glow 3s ease-in-out infinite,sp-pilot-ring 1.1s ease-out 2}
 .sp-hdr-info{flex:1;min-width:0}
 .sp-hdr-name{font-size:13px;font-weight:600;color:#f0f0fa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sp-hdr-status{font-size:9.5px;color:#00c98d;display:flex;align-items:center;gap:4px;margin-top:1px}
@@ -118,14 +122,14 @@ style.textContent=\`
 #sp-send-btn:disabled{opacity:.3;cursor:not-allowed;transform:none}
 #sp-send-btn svg{width:13px;height:13px;fill:#fff}
 .sp-powered{font-size:9px;color:#3a3a5c;text-align:center;padding:5px 0;background:rgba(12,13,24,.7);flex-shrink:0}
-#sp-orb-btn{width:58px;height:58px;border-radius:50%;border:none;background:transparent;cursor:pointer;position:relative;flex-shrink:0;transition:transform .2s,opacity .18s;padding:0}
+#sp-orb-btn{width:66px;height:66px;border-radius:50%;border:none;background:transparent;cursor:pointer;position:relative;flex-shrink:0;transition:transform .2s,opacity .18s;padding:0}
 #sp-orb-btn:hover{transform:scale(1.08)}
 #sp-orb-btn:active{transform:scale(.94)}
-.sp-orb-aura{position:absolute;inset:-12px;border-radius:50%;background:radial-gradient(circle,rgba(91,99,245,.28) 0%,transparent 68%);animation:sp-breathe 3s ease-in-out infinite;pointer-events:none}
+.sp-orb-aura{position:absolute;inset:-14px;border-radius:50%;background:radial-gradient(circle,rgba(91,99,245,.28) 0%,transparent 68%);animation:sp-breathe 3s ease-in-out infinite;pointer-events:none}
 @keyframes sp-breathe{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.3);opacity:.35}}
 @keyframes sp-nudge-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .sp-orb-core{position:absolute;inset:0;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 18px rgba(91,99,245,.8),0 0 36px rgba(91,99,245,.4);animation:sp-orb-glow 3s ease-in-out infinite;overflow:hidden}
-.sp-orb-core svg{width:24px;height:24px;fill:#fff;flex-shrink:0}
+.sp-orb-core svg{width:27px;height:27px;fill:#fff;flex-shrink:0}
 .sp-orb-core img{width:100%;height:100%;object-fit:cover;display:block;flex-shrink:0}
 @keyframes sp-orb-glow{0%,100%{box-shadow:0 0 18px rgba(91,99,245,.8),0 0 36px rgba(91,99,245,.4)}50%{box-shadow:0 0 28px rgba(91,99,245,1),0 0 55px rgba(91,99,245,.6)}}
 #sp-orb-badge{position:absolute;top:-2px;right:-2px;width:17px;height:17px;background:#e8614b;border-radius:50%;border:2px solid #07080f;font-size:10px;font-weight:700;color:#fff;display:none;align-items:center;justify-content:center}
@@ -310,7 +314,7 @@ function pilotLog(){if(PILOT_DEBUG)console.log.apply(console,['[WebChat AI Pilot
 var pilotCfgPromise=fetch(c.apiBase+'/api/page-assistant/config/'+c.token).then(function(r){return r.json();}).then(function(d){
   pilotCfg=d;
   if(!d||!d.enabled)pilotLog('disabled for this bot — turn it on in the dashboard\\'s AI Pilot tab and click Save Settings.');
-  else pilotLog('enabled — cooldown '+(d.cooldownSeconds||4)+'s, max '+(d.maxSuggestions||0)+' popups/session.');
+  else pilotLog('enabled — cooldown '+(typeof d.cooldownSeconds==='number'?d.cooldownSeconds:4)+'s, max '+(typeof d.maxSuggestions==='number'?d.maxSuggestions:0)+' popups/session.');
   return d;
 }).catch(function(){pilotCfg={enabled:false};pilotLog('could not load config (network/CORS issue?) — treating as disabled.');return pilotCfg;});
 
@@ -356,6 +360,55 @@ function findPilotSections(){
 var pilot={sections:[],current:null,questionsBySection:{},lastShownAt:0,shownCount:0,lastDismissed:null,lastDismissedAt:0,shownSections:{},clickedSections:{}};
 var pilotObserver=null;
 var pilotRatios={};
+// A short synthesized "ding" via Web Audio — no audio file to host, no
+// extra network request, and it degrades silently (popup still shows
+// visually) anywhere sound is blocked or unsupported.
+//
+// Browser policy hard-blocks ANY audio — including Web Audio — until the
+// visitor has made a real gesture (click, tap, or keypress) somewhere on
+// the page; a scroll on its own never counts, by design, precisely to stop
+// pages autoplaying sound at people. There's no legitimate way around that,
+// so this listens broadly for the first genuine interaction and, critically,
+// creates AND resumes the AudioContext synchronously inside that same
+// event (Safari in particular only allows unlocking within the gesture
+// itself, not on a later async call) — maximizing the odds it's ready by
+// the time a popup actually needs to play. If a visitor never once
+// clicks/taps/types before triggering a popup, no browser will play sound
+// for it, full stop — that's the platform, not something to work around.
+var pilotAudioCtx=null;
+function unlockPilotAudio(){
+  if(pilotAudioCtx)return;
+  try{
+    pilotAudioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    if(pilotAudioCtx.state==='suspended')pilotAudioCtx.resume().catch(function(){});
+    // Silent 1-sample buffer nudge — the standard iOS Safari unlock trick,
+    // harmless no-op on browsers that don't need it.
+    var b=pilotAudioCtx.createBuffer(1,1,22050);
+    var s=pilotAudioCtx.createBufferSource();
+    s.buffer=b;s.connect(pilotAudioCtx.destination);s.start(0);
+  }catch(e){}
+}
+['pointerdown','mousedown','click','keydown','touchstart'].forEach(function(evt){document.addEventListener(evt,unlockPilotAudio,{once:true,passive:true});});
+function playPilotChime(){
+  try{
+    if(!pilotAudioCtx)unlockPilotAudio();
+    if(!pilotAudioCtx){pilotLog('no chime — no click/tap/keypress has happened on this page yet, so the browser won\\'t allow any sound (its rule, not ours).');return;}
+    if(pilotAudioCtx.state==='suspended'){pilotAudioCtx.resume().catch(function(){});pilotLog('chime attempted but AudioContext is still suspended — browser is blocking it.');}
+    else pilotLog('chime played.');
+    var t=pilotAudioCtx.currentTime;
+    var osc=pilotAudioCtx.createOscillator();
+    var gain=pilotAudioCtx.createGain();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(720,t);      // friendly two-note "ding-ding", not a harsh alert beep
+    osc.frequency.setValueAtTime(980,t+0.09);
+    gain.gain.setValueAtTime(0,t);
+    gain.gain.linearRampToValueAtTime(0.15,t+0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001,t+0.32);
+    osc.connect(gain);gain.connect(pilotAudioCtx.destination);
+    osc.start(t);osc.stop(t+0.34);
+  }catch(e){/* autoplay blocked or unsupported — fine, popup still shows */}
+}
+
 function startPilotObserving(){
   if(!('IntersectionObserver' in window)){pilotLog('this browser lacks IntersectionObserver — AI Pilot needs it and will stay off here.');return;}
   if(pilotObserver)pilotObserver.disconnect();
@@ -367,33 +420,48 @@ function startPilotObserving(){
   }
   pilotLog('found '+pilot.sections.length+' section(s): '+pilot.sections.map(function(s){return '"'+s.name+'"';}).join(', '));
   // rootMargin shrinks the "viewport" IntersectionObserver checks against to
-  // a thin horizontal band roughly a third of the way down the screen —
-  // effectively a trigger line, not a percentage-of-the-whole-section check.
-  // The old ratio-based version needed 35% of a section's OWN total area
-  // visible before it counted as "current", which for any section taller
-  // than the viewport could take forever (or never happen) to reach — that's
-  // why popups were only firing near the very end of a long section's
-  // scroll range. A trigger line fires the moment a section's content
-  // reaches it, regardless of how tall or short that section is.
+  // a band roughly a quarter to halfway down the screen — a trigger zone,
+  // not a percentage-of-the-whole-section check. The old ratio-based version
+  // needed 35% of a section's OWN total area visible before it counted as
+  // "current", which for anything taller than the viewport could take
+  // forever (or never happen) to reach — that's why popups only fired near
+  // the very end of a section's scroll range. A trigger zone fires as soon
+  // as a section's content reaches it, regardless of section height. It's
+  // widened from the first version (was a much thinner 32%–40% band, easy
+  // for a short section to slip through entirely on a fast scroll) to a
+  // steadier 24%–50%.
   pilotObserver=new IntersectionObserver(function(entries){
     entries.forEach(function(entry){
       var match=pilot.sections.find(function(s){return s.el===entry.target;});
       if(match)pilotRatios[match.name]=entry.isIntersecting;
     });
     updateCurrentPilotSection();
-  },{rootMargin:'-32% 0px -60% 0px',threshold:0});
+  },{rootMargin:'-24% 0px -50% 0px',threshold:0});
   pilot.sections.forEach(function(s){pilotObserver.observe(s.el);});
 }
+var pilotPendingTimer=null;
 function updateCurrentPilotSection(){
-  // With a trigger-line root, sections don't overlap it simultaneously in
-  // normal page flow, so at most one name is true at a time — but if the
-  // still-current section is still crossing it, keep it rather than
-  // reshuffling to whatever else happens to also be true for an instant.
-  var best=(pilot.current&&pilotRatios[pilot.current])?pilot.current:null;
-  if(!best){
-    var name=Object.keys(pilotRatios).find(function(n){return pilotRatios[n];});
-    best=name||null;
+  // Prefer document order (topmost matching section) over object-key order
+  // when more than one is momentarily true, and keep the existing current
+  // section if it's still valid rather than reshuffling.
+  var candidate=null;
+  for(var i=0;i<pilot.sections.length;i++){
+    if(pilotRatios[pilot.sections[i].name]){candidate=pilot.sections[i].name;break;}
   }
+  var target=(pilot.current&&pilotRatios[pilot.current])?pilot.current:candidate;
+  if(target===pilot.current)return;
+  if(pilotPendingTimer){clearTimeout(pilotPendingTimer);pilotPendingTimer=null;}
+  if(!target){commitPilotSection(null);return;}
+  // Require the new section to hold the trigger zone for a beat before
+  // committing — a fast flick-scroll can graze a short section for a single
+  // frame; without this debounce, that instant graze could win "current"
+  // and fire a popup for a section the visitor never actually paused on.
+  pilotPendingTimer=setTimeout(function(){
+    pilotPendingTimer=null;
+    if(pilotRatios[target])commitPilotSection(target);
+  },180);
+}
+function commitPilotSection(best){
   if(best===pilot.current)return;
   var leaving=pilot.current;
   pilot.current=best;
@@ -425,7 +493,11 @@ function maybeShowPilotPopup(){
   // but DO allow a genuine re-entry after that short window.
   if(pilot.lastDismissed===name&&Date.now()-pilot.lastDismissedAt<2500)return;
   var now=Date.now();
-  if(now-pilot.lastShownAt<(pilotCfg.cooldownSeconds||4)*1000)return;
+  // cooldownSeconds can legitimately be 0 ("no cooldown"), and 0||4 would
+  // silently turn that back into 4 — only fall back when it's genuinely
+  // missing (undefined/null), not just falsy.
+  var cooldownMs=(typeof pilotCfg.cooldownSeconds==='number'?pilotCfg.cooldownSeconds:4)*1000;
+  if(now-pilot.lastShownAt<cooldownMs)return;
   var question=pilot.questionsBySection[name];
   if(!question)return; // not loaded yet — the periodic retry below or the fetch callback will catch it
 
@@ -450,16 +522,31 @@ function hidePilotPopup(sectionName){
   el.style.opacity='0';el.style.transform='translateY(8px) scale(.92)';
   setTimeout(function(){el.remove();},260);
 }
-// A deliberately punchy, high-contrast popup — uses the bot's own accent
-// gradient rather than a muted dark box, with a spring-style entrance so
-// it's unmistakable rather than something that could be missed.
+// A calmer, more professional card — matches the chat window's own dark
+// surface (#11121f) instead of a bright full-color balloon, with the bot's
+// accent color reduced to a thin left stripe and the avatar chip rather
+// than the whole background, and a muted "Suggested question" label instead
+// of a cutesy one. Still gets a spring-style entrance, a chime, and a brief
+// pulse ring on the orb so it's noticed — just without looking like a promo
+// popup.
 function showPilotPopup(question,section){
   if(pilotPopupEl)pilotPopupEl.remove();
   pilotPopupSection=section?section.name:null;
   pilotPopupEl=document.createElement('div');
-  pilotPopupEl.style.cssText='position:relative;background:'+c.colorGrad+';border-radius:16px;padding:12px 16px;max-width:240px;font-size:13px;font-weight:600;color:#fff;box-shadow:0 14px 34px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.1);display:flex;align-items:center;gap:10px;cursor:pointer;font-family:inherit;opacity:0;transform:translateY(16px) scale(.85)';
-  pilotPopupEl.innerHTML='<span style="flex:1;line-height:1.4">'+question+'</span><button type="button" style="background:rgba(255,255,255,.2);border:none;color:#fff;font-size:12px;cursor:pointer;line-height:1;padding:4px 5px;border-radius:6px;flex-shrink:0" title="Dismiss">✕</button>';
+  pilotPopupEl.style.cssText='position:relative;background:#11121f;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:11px 14px 11px 13px;max-width:254px;box-shadow:0 16px 40px rgba(0,0,0,.55);display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-family:inherit;opacity:0;transform:translateY(14px) scale(.92);overflow:hidden';
+  pilotPopupEl.innerHTML=
+    '<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:'+c.colorGrad+'"></div>'+
+    '<div class="sp-pilot-avatar" style="background:'+c.colorGrad+'">'+avatarHTML()+'</div>'+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="font-size:9.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:#7c7d94;margin-bottom:3px">Suggested question</div>'+
+      '<div style="font-size:13px;font-weight:500;line-height:1.42;color:#eceef7">'+question+'</div>'+
+    '</div>'+
+    '<button type="button" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:#8b8ca6;font-size:11px;cursor:pointer;line-height:1;padding:4px 5px;border-radius:6px;flex-shrink:0;margin-top:1px" title="Dismiss">✕</button>'+
+    '<div style="position:absolute;bottom:-6px;right:26px;width:11px;height:11px;background:#11121f;border-right:1px solid rgba(255,255,255,.09);border-bottom:1px solid rgba(255,255,255,.09);transform:rotate(45deg)"></div>';
   root.insertBefore(pilotPopupEl,orbBtn);
+  orbBtn.classList.add('sp-pilot-alert');
+  setTimeout(function(){orbBtn.classList.remove('sp-pilot-alert');},2400);
+  playPilotChime();
   requestAnimationFrame(function(){
     if(!pilotPopupEl)return;
     pilotPopupEl.style.transition='opacity .4s cubic-bezier(.34,1.56,.64,1),transform .4s cubic-bezier(.34,1.56,.64,1)';

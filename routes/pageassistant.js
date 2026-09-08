@@ -128,6 +128,8 @@ Respond with ONLY a JSON array, no markdown fences, no extra text, one entry per
 Rules:
 - Base each question ONLY on that section's own text — never invent something not actually there.
 - Keep questions short and conversational, like something a person would actually type or tap.
+- Write like a curious visitor talking out loud, not like the company's own marketing copy — plain everyday words, no jargon, no industry terms, no legalese or buzzwords even if the section itself uses them.
+- A stranger who has never read this page should understand the question instantly, with zero re-reading.
 - Don't repeat near-identical questions across sections.
 - Never write vague meta-questions like "summarize this page" or "tell me more" — always ask about something SPECIFIC and concrete that's actually named or described in that section's text (a specific plan, service, feature, claim, or fact), so the question can be answered from that section alone.`;
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -211,7 +213,7 @@ router.patch('/api/admin/page-assistant/:token', requireAdmin, async (req, res) 
 
     const b = req.body || {};
     const enabled = !!b.enabled;
-    const cooldownSeconds = Number.isFinite(b.cooldownSeconds) ? Math.max(1, Math.min(60, Math.round(b.cooldownSeconds))) : 4;
+    const cooldownSeconds = Number.isFinite(b.cooldownSeconds) ? Math.max(0, Math.min(60, Math.round(b.cooldownSeconds))) : 4;
     const maxSuggestions = Number.isFinite(b.maxSuggestions) ? Math.max(0, Math.min(20, Math.round(b.maxSuggestions))) : 6;
 
     await db.prepare(`
