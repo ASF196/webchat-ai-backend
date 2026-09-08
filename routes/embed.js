@@ -348,7 +348,12 @@ function findPilotSections(){
   return out;
 }
 
-var pilot={sections:[],current:null,questionsBySection:{},lastShownAt:0,shownCount:0,lastDismissed:null,lastDismissedAt:0};
+// clickedSections: sections the visitor has actually tapped the popup for —
+// permanently silenced. shownSections: sections that have been shown at
+// least once — counted toward the session cap exactly once, so scrolling
+// back to an already-seen-but-not-clicked section can still pop up again
+// without burning through the whole session's budget on one section.
+var pilot={sections:[],current:null,questionsBySection:{},lastShownAt:0,shownCount:0,lastDismissed:null,lastDismissedAt:0,shownSections:{},clickedSections:{}};
 var pilotObserver=null;
 var pilotRatios={};
 function startPilotObserving(){
@@ -361,26 +366,34 @@ function startPilotObserving(){
     return;
   }
   pilotLog('found '+pilot.sections.length+' section(s): '+pilot.sections.map(function(s){return '"'+s.name+'"';}).join(', '));
+  // rootMargin shrinks the "viewport" IntersectionObserver checks against to
+  // a thin horizontal band roughly a third of the way down the screen —
+  // effectively a trigger line, not a percentage-of-the-whole-section check.
+  // The old ratio-based version needed 35% of a section's OWN total area
+  // visible before it counted as "current", which for any section taller
+  // than the viewport could take forever (or never happen) to reach — that's
+  // why popups were only firing near the very end of a long section's
+  // scroll range. A trigger line fires the moment a section's content
+  // reaches it, regardless of how tall or short that section is.
   pilotObserver=new IntersectionObserver(function(entries){
     entries.forEach(function(entry){
       var match=pilot.sections.find(function(s){return s.el===entry.target;});
-      if(match)pilotRatios[match.name]=entry.intersectionRatio;
+      if(match)pilotRatios[match.name]=entry.isIntersecting;
     });
     updateCurrentPilotSection();
-  },{threshold:[0,0.15,0.35,0.5,0.75,1]});
+  },{rootMargin:'-32% 0px -60% 0px',threshold:0});
   pilot.sections.forEach(function(s){pilotObserver.observe(s.el);});
 }
-// Hysteresis: entering "current" requires >35% visible, but once current,
-// it only gives up that status once it drops under 15% — without this gap,
-// scrolling right at a section boundary would flicker the popup on/off
-// rapidly instead of cleanly showing/hiding once per real enter/exit.
 function updateCurrentPilotSection(){
-  var currentRatio=pilot.current?(pilotRatios[pilot.current]||0):0;
-  if(pilot.current&&currentRatio>=0.15)return; // still counts as "in" this section, no change
-  var best=null,bestRatio=0.35;
-  Object.keys(pilotRatios).forEach(function(name){
-    if(pilotRatios[name]>bestRatio){bestRatio=pilotRatios[name];best=name;}
-  });
+  // With a trigger-line root, sections don't overlap it simultaneously in
+  // normal page flow, so at most one name is true at a time — but if the
+  // still-current section is still crossing it, keep it rather than
+  // reshuffling to whatever else happens to also be true for an instant.
+  var best=(pilot.current&&pilotRatios[pilot.current])?pilot.current:null;
+  if(!best){
+    var name=Object.keys(pilotRatios).find(function(n){return pilotRatios[n];});
+    best=name||null;
+  }
   if(best===pilot.current)return;
   var leaving=pilot.current;
   pilot.current=best;
@@ -388,7 +401,8 @@ function updateCurrentPilotSection(){
   if(best){
     if(PILOT_DEBUG){
       if(!pilotCfg||!pilotCfg.enabled)pilotLog('scrolled into "'+best+'" but AI Pilot is disabled — nothing will show.');
-      else if(pilot.shownCount>=(pilotCfg.maxSuggestions||0))pilotLog('scrolled into "'+best+'" but hit the max-popups-per-session cap ('+(pilotCfg.maxSuggestions||0)+') — raise it in settings to see more.');
+      else if(pilot.clickedSections[best])pilotLog('scrolled into "'+best+'" — already clicked earlier, staying quiet.');
+      else if(!pilot.shownSections[best]&&pilot.shownCount>=(pilotCfg.maxSuggestions||0))pilotLog('scrolled into "'+best+'" but hit the max-popups-per-session cap ('+(pilotCfg.maxSuggestions||0)+') — raise it in settings to see more.');
       else if(!pilot.questionsBySection[best])pilotLog('scrolled into "'+best+'" — question still generating, will pop up once ready.');
       else pilotLog('scrolled into "'+best+'" — showing: "'+pilot.questionsBySection[best]+'"');
     }
@@ -398,9 +412,14 @@ function updateCurrentPilotSection(){
 
 function maybeShowPilotPopup(){
   if(!pilotCfg||!pilotCfg.enabled||chatOpen||pilotPopupEl)return;
-  if(pilot.shownCount>=(pilotCfg.maxSuggestions||0))return;
   var name=pilot.current;
   if(!name)return;
+  if(pilot.clickedSections[name])return; // they already asked about this one — done, for good
+  // Only a section's FIRST-ever impression counts against the session cap —
+  // once it's been shown once, scrolling back to it again (without having
+  // clicked it) can still pop up, it just doesn't cost more of the budget.
+  var firstImpression=!pilot.shownSections[name];
+  if(firstImpression&&pilot.shownCount>=(pilotCfg.maxSuggestions||0))return;
   // A brief anti-flicker guard — don't instantly re-show the exact popup
   // that was just hidden a moment ago (e.g. jitter right at the boundary),
   // but DO allow a genuine re-entry after that short window.
@@ -411,7 +430,7 @@ function maybeShowPilotPopup(){
   if(!question)return; // not loaded yet — the periodic retry below or the fetch callback will catch it
 
   pilot.lastShownAt=now;
-  pilot.shownCount++;
+  if(firstImpression){pilot.shownSections[name]=true;pilot.shownCount++;}
   logPilotEvent('suggestion_shown',name);
   var section=pilot.sections.find(function(s){return s.name===name;});
   showPilotPopup(question,section);
@@ -450,6 +469,7 @@ function showPilotPopup(question,section){
   pilotPopupEl.onclick=function(){
     logPilotEvent('suggestion_clicked',pilotPopupSection);
     var sectionText=section?section.text:null;
+    pilot.clickedSections[pilotPopupSection]=true; // done — this section won't pop up again
     pilotPopupEl=null;pilotPopupSection=null;
     openChat();
     send(question,sectionText);
@@ -458,7 +478,10 @@ function showPilotPopup(question,section){
     e.stopPropagation();
     hidePilotPopup(pilotPopupSection);
   };
-  setTimeout(function(){if(pilotPopupEl)hidePilotPopup(pilotPopupSection);},10000);
+  // 20s (up from 10s) gives someone enough time to actually notice and read
+  // it, not just a flash — it still disappears immediately on its own if
+  // they scroll away from the section before that.
+  setTimeout(function(){if(pilotPopupEl)hidePilotPopup(pilotPopupSection);},20000);
 }
 
 // Asks the backend for one question per detected section, then (re)checks
