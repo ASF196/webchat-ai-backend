@@ -9,7 +9,18 @@ services:
     name: webchat-ai-backend
     runtime: node
     plan: free
-    buildCommand: npm install && npx playwright install chromium
+    # npm ci (not npm install) installs EXACTLY what's in package-lock.json —
+    # no drift. This matters here specifically because of a real failure:
+    # playwright was pinned as "^1.47.0", so a later build could resolve a
+    # newer 1.x release than the one Render's browser-binary cache was
+    # populated for. Playwright's browser downloads are keyed to the exact
+    # package version, so a version bump without a matching fresh browser
+    # download throws "Executable doesn't exist at .../chromium_headless_shell-.../"
+    # — playwright.js is now pinned to an exact version for the same reason.
+    # --with-deps also installs the OS-level shared libraries Chromium needs
+    # to actually launch on a minimal Linux image, which a bare
+    # `playwright install chromium` (browser binary only) does not.
+    buildCommand: npm ci && npx playwright install --with-deps chromium
     startCommand: node server.js
     envVars:
       # Render wires this automatically from the database above — no need to
