@@ -26,11 +26,18 @@ function isUnsure(t) {
 // Splits the model's raw reply into clean text + the suggestion chips,
 // matching the |||SUGS|||[...] marker format the dashboard's prompt also uses.
 function parseSuggestions(raw) {
-  const marker = '|||SUGS|||';
-  const idx = raw.indexOf(marker);
-  if (idx === -1) return { text: raw.trim(), suggestions: [] };
+  // Match 2-4 pipes on each side, not an exact 3-3 — smaller/faster models
+  // occasionally drop or add a pipe when following the format, and an exact
+  // string match failing meant the ENTIRE raw reply (marker, brackets, and
+  // all) got shown to the visitor as literal text instead of being parsed.
+  const m = raw.match(/\|{2,4}\s*SUGS\s*\|{2,4}/);
+  if (!m) return { text: raw.trim(), suggestions: [] };
+  const idx = m.index;
   const text = raw.slice(0, idx).trim();
-  const jsonPart = raw.slice(idx + marker.length).trim();
+  let jsonPart = raw.slice(idx + m[0].length).trim();
+  const start = jsonPart.indexOf('[');
+  const end = jsonPart.lastIndexOf(']');
+  if (start !== -1 && end > start) jsonPart = jsonPart.slice(start, end + 1);
   try {
     const arr = JSON.parse(jsonPart);
     if (Array.isArray(arr)) {

@@ -173,6 +173,7 @@ router.post('/scrape', requireAdmin, async (req, res) => {
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
   if (isBlockedUrl(url)) return res.status(400).json({ error: 'That URL is not allowed.' });
 
+  let renderFallbackReason = null;
   if (render) {
     try {
       const html = await fetchRendered(url);
@@ -181,16 +182,21 @@ router.post('/scrape', requireAdmin, async (req, res) => {
       // Rendering is best-effort — if Chromium isn't available in this
       // environment, crashed, or timed out, fall back to the plain fetch
       // instead of failing the whole request. The owner still gets
-      // something rather than nothing.
-      console.error('Rendered scrape failed, falling back to plain fetch:', err.message || err);
+      // something rather than nothing. But silently swallowing WHY it
+      // failed made "Could not extract readable content" a dead end with
+      // no way to tell rendering-failed-so-we-got-an-empty-SPA-shell apart
+      // from the site genuinely having too little text — so pass the
+      // reason back to the client instead of only logging it server-side.
+      renderFallbackReason = err.message || String(err);
+      console.error('Rendered scrape failed, falling back to plain fetch:', renderFallbackReason);
     }
   }
 
   try {
     const html = await fetchPlain(url);
-    res.json({ html, rendered: false });
+    res.json({ html, rendered: false, renderFallbackReason });
   } catch (err) {
-    res.status(err.status || 502).json({ error: err.message || 'Failed to fetch that page.' });
+    res.status(err.status || 502).json({ error: err.message || 'Failed to fetch that page.', renderFallbackReason });
   }
 });
 

@@ -574,7 +574,11 @@ function showPilotPopup(question,section){
     logPilotEvent('suggestion_clicked',pilotPopupSection);
     var sectionText=section?section.text:null;
     pilot.clickedSections[pilotPopupSection]=true; // done — this section won't pop up again
+    var el=pilotPopupEl; // capture before clearing the shared reference below
     pilotPopupEl=null;pilotPopupSection=null;
+    el.remove(); // the actual bug: this was never called, so the bubble stayed
+                 // on screen permanently after being clicked — visible under
+                 // the now-open chat window, and still there after closing it.
     openChat();
     send(question,sectionText);
   };
@@ -847,6 +851,11 @@ inputEl.addEventListener('input',function(){inputEl.style.height='auto';inputEl.
 function openChat(){
   chatOpen=true;win.classList.remove('hidden');orbBtn.style.display='none';
   orbBtn.querySelector('#sp-orb-badge').classList.remove('show');
+  // Belt-and-suspenders: whatever path opened the chat (a suggestion click,
+  // or the visitor just clicking the orb directly while a popup happened to
+  // be showing), a leftover AI Pilot popup should never still be sitting on
+  // screen once the chat window is open.
+  if(pilotPopupEl)hidePilotPopup(pilotPopupSection);
   inputEl.focus();scrollToBottom();
 }
 function closeChat(){chatOpen=false;win.classList.add('hidden');win.classList.remove('expanded');orbBtn.style.display='';if(TTS)TTS.cancel();}
