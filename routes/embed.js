@@ -412,17 +412,33 @@ function playPilotChime(){
     if(!pilotAudioCtx){pilotLog('no chime — no click/tap/keypress has happened on this page yet, so the browser won\\'t allow any sound (its rule, not ours).');return;}
     if(pilotAudioCtx.state==='suspended'){pilotAudioCtx.resume().catch(function(){});pilotLog('chime attempted but AudioContext is still suspended — browser is blocking it.');}
     else pilotLog('chime played.');
-    var t=pilotAudioCtx.currentTime;
-    var osc=pilotAudioCtx.createOscillator();
-    var gain=pilotAudioCtx.createGain();
-    osc.type='sine';
-    osc.frequency.setValueAtTime(760,t);      // friendly two-note "ding-ding", not a harsh alert beep
-    osc.frequency.setValueAtTime(1040,t+0.1);
+    var ctx=pilotAudioCtx;
+    var t=ctx.currentTime;
+    // A crisp, percussive "click" rather than a melodic chime — a very
+    // short filtered-noise transient for the sharp attack (the actual
+    // "click" texture), layered with a quick low-pitched thump right under
+    // it for body/weight, both gone within ~90ms. Modeled on the kind of
+    // tactile confirmation sound native UI toggles/buttons use.
+    var noiseBuf=ctx.createBuffer(1,Math.max(1,Math.round(ctx.sampleRate*0.018)),ctx.sampleRate);
+    var noiseData=noiseBuf.getChannelData(0);
+    for(var i=0;i<noiseData.length;i++)noiseData[i]=(Math.random()*2-1)*(1-i/noiseData.length);
+    var noiseSrc=ctx.createBufferSource();noiseSrc.buffer=noiseBuf;
+    var noiseFilter=ctx.createBiquadFilter();noiseFilter.type='highpass';noiseFilter.frequency.setValueAtTime(2200,t);
+    var noiseGain=ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.5,t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001,t+0.032);
+    noiseSrc.connect(noiseFilter);noiseFilter.connect(noiseGain);noiseGain.connect(ctx.destination);
+    noiseSrc.start(t);
+
+    var osc=ctx.createOscillator();osc.type='sine';
+    osc.frequency.setValueAtTime(560,t);
+    osc.frequency.exponentialRampToValueAtTime(180,t+0.09);
+    var gain=ctx.createGain();
     gain.gain.setValueAtTime(0,t);
-    gain.gain.linearRampToValueAtTime(0.28,t+0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001,t+0.38);
-    osc.connect(gain);gain.connect(pilotAudioCtx.destination);
-    osc.start(t);osc.stop(t+0.4);
+    gain.gain.linearRampToValueAtTime(0.34,t+0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001,t+0.15);
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.start(t);osc.stop(t+0.16);
   }catch(e){/* autoplay blocked or unsupported — fine, popup still shows */}
 }
 
@@ -524,9 +540,17 @@ function maybeShowPilotPopup(){
   var section=pilot.sections.find(function(s){return s.name===name;});
   showPilotPopup(question,section);
 }
-// Covers the rare case where the visitor is already sitting on a section
-// when the (slower) question-generation network call finishes.
-setInterval(function(){if(pilot.current)maybeShowPilotPopup();},1500);
+// Only for the case where the visitor is already sitting on a section when
+// the (slower) question-generation network call finishes — a genuinely
+// one-shot situation, not a reason to keep re-checking forever. Gated on
+// "never shown yet for this section": once it's been shown once, this stops
+// touching it entirely, so sitting still in a section can't cause it to
+// pop → hide → pop → hide on a loop. The ONLY thing that should make it
+// show again after that is actually leaving and re-entering the section
+// (handled separately, in commitPilotSection).
+setInterval(function(){
+  if(pilot.current&&!pilot.shownSections[pilot.current]&&!pilotPopupEl)maybeShowPilotPopup();
+},1500);
 
 var pilotPopupEl=null;
 var pilotPopupSection=null;
